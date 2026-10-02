@@ -1,0 +1,757 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Athletic Performance Dashboard - 球隊下肢爆發力與揮棒速度追蹤系統</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Plotly.js -->
+    <script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <style>
+        body { background-color: #0f172a; color: #f8fafc; font-family: system-ui, -apple-system, sans-serif; }
+        .card { background-color: #1e293b; border: 1px solid #334155; border-radius: 0.75rem; }
+        .input-field { background-color: #0f172a; border: 1px solid #475569; color: #f8fafc; border-radius: 0.5rem; padding: 0.5rem 0.75rem; }
+        .input-field:focus { outline: none; border-color: #38bdf8; }
+    </style>
+</head>
+<body class="p-4 md:p-8">
+    <div class="max-w-7xl mx-auto space-y-6">
+        
+        <!-- Header -->
+        <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 pb-4 border-b border-slate-700">
+            <div>
+                <h1 class="text-2xl md:text-3xl font-bold text-sky-400 flex items-center gap-2">
+                    <i data-lucide="activity"></i> Athletic Performance Dashboard
+                </h1>
+                <p class="text-slate-400 text-sm mt-1">CMJ / SJ / AJ 爆發力對比、揮棒速度追蹤、EUR 離心利用率與擺臂利用率評估</p>
+            </div>
+            
+            <div class="flex gap-2">
+                <button onclick="exportCSV()" class="flex items-center gap-1.5 px-4 py-2 bg-slate-700 hover:bg-slate-600 rounded-lg text-sm transition">
+                    <i data-lucide="download"></i> 匯出 CSV
+                </button>
+                <label class="flex items-center gap-1.5 px-4 py-2 bg-sky-600 hover:bg-sky-500 rounded-lg text-sm cursor-pointer transition">
+                    <i data-lucide="upload"></i> 匯入 CSV
+                    <input type="file" id="csvFileInput" accept=".csv" class="hidden" onchange="importCSV(event)">
+                </label>
+            </div>
+        </div>
+
+        <!-- Controls & Athlete Selection -->
+        <div class="card p-4 flex flex-col md:flex-row justify-between items-center gap-4">
+            <div class="flex items-center gap-3 w-full md:w-auto">
+                <i data-lucide="users" class="text-sky-400"></i>
+                <span class="font-medium">選擇分析隊員：</span>
+                <select id="athleteSelect" onchange="updateDashboard()" class="input-field min-w-[180px]">
+                    <option value="ALL">全隊總覽 (All Athletes)</option>
+                </select>
+                <!-- 2. 新增：刪除隊員按鈕 -->
+                <button id="deleteAthleteBtn" onclick="deleteCurrentAthlete()" class="hidden flex items-center gap-1 px-3 py-2 bg-red-600/80 hover:bg-red-600 text-white rounded-lg text-xs transition" title="刪除選取隊員及其所有紀錄">
+                    <i data-lucide="user-x" class="w-4 h-4"></i> 刪除此隊員
+                </button>
+            </div>
+            <div id="athleteProfile" class="text-sm text-slate-300 hidden md:flex gap-6">
+                <!-- Auto populated -->
+            </div>
+        </div>
+
+        <!-- KPI Cards -->
+        <div class="grid grid-cols-2 md:grid-cols-6 gap-3">
+            <div class="card p-3 md:p-4">
+                <div class="text-slate-400 text-xs">最新 CMJ (cm)</div>
+                <div id="kpiCMJ" class="text-xl md:text-2xl font-bold text-sky-400 mt-1">--</div>
+            </div>
+            <div class="card p-3 md:p-4">
+                <div class="text-slate-400 text-xs">最新 SJ (cm)</div>
+                <div id="kpiSJ" class="text-xl md:text-2xl font-bold text-amber-400 mt-1">--</div>
+            </div>
+            <div class="card p-3 md:p-4">
+                <div class="text-slate-400 text-xs">最新 AJ (cm)</div>
+                <div id="kpiAJ" class="text-xl md:text-2xl font-bold text-purple-400 mt-1">--</div>
+            </div>
+            <div class="card p-3 md:p-4">
+                <div class="text-slate-400 text-xs">揮棒速度 (mph)</div>
+                <div id="kpiBatSpeed" class="text-xl md:text-2xl font-bold text-emerald-400 mt-1">--</div>
+            </div>
+            <div class="card p-3 md:p-4">
+                <div class="text-slate-400 text-xs">離心利用率 (EUR)</div>
+                <div id="kpiEUR" class="text-xl md:text-2xl font-bold text-sky-300 mt-1">--</div>
+                <div id="kpiEURDiag" class="text-[10px] text-slate-400 mt-0.5 truncate">--</div>
+            </div>
+            <!-- 1. 新增：擺臂利用率 KPI -->
+            <div class="card p-3 md:p-4">
+                <div class="text-slate-400 text-xs">擺臂利用率 (Arm Gain)</div>
+                <div id="kpiArmGain" class="text-xl md:text-2xl font-bold text-purple-300 mt-1">--</div>
+                <div id="kpiArmDiag" class="text-[10px] text-slate-400 mt-0.5 truncate">--</div>
+            </div>
+        </div>
+
+        <!-- Dual Chart Layout -->
+        <div class="grid grid-cols-1 gap-6">
+            <!-- 1. 下肢彈跳進步趨勢圖 (CMJ vs SJ vs AJ 同欄比較) -->
+            <div class="card p-4 md:p-6">
+                <div class="mb-2">
+                    <h2 id="jumpChartTitle" class="text-lg font-semibold flex items-center gap-2">
+                        <i data-lucide="trending-up" class="text-sky-400"></i> 下肢彈跳進步趨勢 (CMJ vs SJ vs AJ)
+                    </h2>
+                    <p class="text-xs text-slate-400 mt-1">CMJ (藍色實線)、SJ (黃色虛線) 與 AJ (紫色點線) 放在同一欄進行對比</p>
+                </div>
+                <div id="jumpChart" class="w-full h-[320px]"></div>
+            </div>
+
+            <!-- 2. 揮棒速度進步趨勢圖 (Bat Speed 獨立一欄) -->
+            <div class="card p-4 md:p-6">
+                <div class="mb-2">
+                    <h2 id="batChartTitle" class="text-lg font-semibold flex items-center gap-2">
+                        <i data-lucide="zap" class="text-emerald-400"></i> 揮棒速度進步趨勢 (Bat Speed)
+                    </h2>
+                    <p class="text-xs text-slate-400 mt-1">獨立一欄觀察揮棒速度 (mph) 增長趨勢</p>
+                </div>
+                <div id="batChart" class="w-full h-[280px]"></div>
+            </div>
+        </div>
+
+        <!-- Data Entry Form & History Table Grid -->
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            
+            <!-- Input Form -->
+            <div class="card p-5">
+                <h3 class="text-md font-semibold text-sky-400 mb-4 flex items-center gap-2">
+                    <i data-lucide="plus-circle"></i> 新增測量紀錄
+                </h3>
+                <form id="recordForm" onsubmit="handleFormSubmit(event)" class="space-y-3 text-sm">
+                    <div>
+                        <label class="block text-slate-400 mb-1">選手姓名</label>
+                        <input type="text" id="inputName" required placeholder="例如：王俊元" class="input-field w-full" onchange="autoFillAthleteProfile(this.value)">
+                    </div>
+                    
+                    <div class="grid grid-cols-2 gap-2">
+                        <div>
+                            <label class="block text-slate-400 mb-1">性別</label>
+                            <select id="inputGender" class="input-field w-full">
+                                <option value="男">男</option>
+                                <option value="女">女</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-slate-400 mb-1">測試日期</label>
+                            <input type="date" id="inputDate" required class="input-field w-full">
+                        </div>
+                    </div>
+
+                    <div class="grid grid-cols-3 gap-2">
+                        <div>
+                            <label class="block text-slate-400 mb-1">身高 (cm)</label>
+                            <input type="number" step="0.1" id="inputHeight" placeholder="178" class="input-field w-full">
+                        </div>
+                        <div>
+                            <label class="block text-slate-400 mb-1">體重 (kg)</label>
+                            <input type="number" step="0.1" id="inputWeight" placeholder="80" class="input-field w-full">
+                        </div>
+                        <div>
+                            <label class="block text-slate-400 mb-1">出生年月日</label>
+                            <input type="date" id="inputDOB" class="input-field w-full">
+                        </div>
+                    </div>
+
+                    <div class="grid grid-cols-3 gap-2 pt-2 border-t border-slate-700">
+                        <div>
+                            <label class="block text-slate-400 mb-1">SJ 深蹲跳 (cm)</label>
+                            <input type="number" step="0.1" id="inputSJ" required placeholder="49.0" class="input-field w-full">
+                        </div>
+                        <div>
+                            <label class="block text-slate-400 mb-1">CMJ 反向跳 (cm)</label>
+                            <input type="number" step="0.1" id="inputCMJ" required placeholder="51.0" class="input-field w-full">
+                        </div>
+                        <div>
+                            <label class="block text-slate-400 mb-1">AJ 擺臂跳 (cm)</label>
+                            <input type="number" step="0.1" id="inputAJ" placeholder="55.0" class="input-field w-full">
+                        </div>
+                    </div>
+
+                    <div class="grid grid-cols-2 gap-2">
+                        <div>
+                            <label class="block text-slate-400 mb-1">DJ_RSI</label>
+                            <input type="number" step="0.01" id="inputRSI" placeholder="2.1" class="input-field w-full">
+                        </div>
+                        <div>
+                            <label class="block text-slate-400 mb-1">揮棒速度 (mph)</label>
+                            <input type="number" step="0.1" id="inputBatSpeed" required placeholder="70.8" class="input-field w-full">
+                        </div>
+                    </div>
+
+                    <button type="submit" class="w-full mt-4 py-2.5 bg-sky-600 hover:bg-sky-500 rounded-lg font-medium transition text-white">
+                        儲存紀錄
+                    </button>
+                </form>
+            </div>
+
+            <!-- History Table -->
+            <div class="card p-5 lg:col-span-2 flex flex-col justify-between">
+                <div>
+                    <h3 class="text-md font-semibold text-sky-400 mb-4 flex items-center gap-2">
+                        <i data-lucide="database"></i> 歷史數據紀錄表
+                    </h3>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-left text-sm text-slate-300">
+                            <thead class="bg-slate-800 text-slate-400 uppercase text-xs">
+                                <tr>
+                                    <th class="p-2">日期</th>
+                                    <th class="p-2">姓名</th>
+                                    <th class="p-2">SJ (cm)</th>
+                                    <th class="p-2">CMJ (cm)</th>
+                                    <th class="p-2">AJ (cm)</th>
+                                    <th class="p-2">揮棒 (mph)</th>
+                                    <th class="p-2">EUR</th>
+                                    <th class="p-2">擺臂加成</th>
+                                    <th class="p-2">操作</th>
+                                </tr>
+                            </thead>
+                            <tbody id="dataTableBody" class="divide-y divide-slate-700">
+                                <!-- Dynamic JS Population -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+    <!-- Edit Record Modal -->
+    <div id="editModal" class="fixed inset-0 bg-black/70 backdrop-blur-sm hidden flex items-center justify-center p-4 z-50">
+        <div class="card p-6 w-full max-w-lg space-y-4">
+            <div class="flex justify-between items-center pb-2 border-b border-slate-700">
+                <h3 class="text-lg font-semibold text-sky-400 flex items-center gap-2">
+                    <i data-lucide="edit"></i> 編輯紀錄數據
+                </h3>
+                <button onclick="closeEditModal()" class="text-slate-400 hover:text-white">
+                    <i data-lucide="x" class="w-5 h-5"></i>
+                </button>
+            </div>
+            
+            <form id="editForm" onsubmit="handleEditSubmit(event)" class="space-y-3 text-sm">
+                <input type="hidden" id="editId">
+                <div>
+                    <label class="block text-slate-400 mb-1">選手姓名</label>
+                    <input type="text" id="editName" required class="input-field w-full">
+                </div>
+                
+                <div class="grid grid-cols-2 gap-2">
+                    <div>
+                        <label class="block text-slate-400 mb-1">性別</label>
+                        <select id="editGender" class="input-field w-full">
+                            <option value="男">男</option>
+                            <option value="女">女</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-slate-400 mb-1">測試日期</label>
+                        <input type="date" id="editDate" required class="input-field w-full">
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-3 gap-2">
+                    <div>
+                        <label class="block text-slate-400 mb-1">身高 (cm)</label>
+                        <input type="number" step="0.1" id="editHeight" class="input-field w-full">
+                    </div>
+                    <div>
+                        <label class="block text-slate-400 mb-1">體重 (kg)</label>
+                        <input type="number" step="0.1" id="editWeight" class="input-field w-full">
+                    </div>
+                    <div>
+                        <label class="block text-slate-400 mb-1">出生年月日</label>
+                        <input type="date" id="editDOB" class="input-field w-full">
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-3 gap-2 pt-2 border-t border-slate-700">
+                    <div>
+                        <label class="block text-slate-400 mb-1">SJ 深蹲跳 (cm)</label>
+                        <input type="number" step="0.1" id="editSJ" required class="input-field w-full">
+                    </div>
+                    <div>
+                        <label class="block text-slate-400 mb-1">CMJ 反向跳 (cm)</label>
+                        <input type="number" step="0.1" id="editCMJ" required class="input-field w-full">
+                    </div>
+                    <div>
+                        <label class="block text-slate-400 mb-1">AJ 擺臂跳 (cm)</label>
+                        <input type="number" step="0.1" id="editAJ" class="input-field w-full">
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-2 gap-2">
+                    <div>
+                        <label class="block text-slate-400 mb-1">DJ_RSI</label>
+                        <input type="number" step="0.01" id="editRSI" class="input-field w-full">
+                    </div>
+                    <div>
+                        <label class="block text-slate-400 mb-1">揮棒速度 (mph)</label>
+                        <input type="number" step="0.1" id="editBatSpeed" required class="input-field w-full">
+                    </div>
+                </div>
+
+                <div class="flex gap-2 pt-2">
+                    <button type="button" onclick="closeEditModal()" class="w-1/2 py-2 bg-slate-700 hover:bg-slate-600 rounded-lg font-medium transition text-white">
+                        取消
+                    </button>
+                    <button type="submit" class="w-1/2 py-2 bg-sky-600 hover:bg-sky-500 rounded-lg font-medium transition text-white">
+                        更新儲存
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script>
+        let records = [
+            { id: 1, name: "王俊元", gender: "男", dob: "1998-05-12", height: 178, weight: 80, date: "2026-08-23", sj: 49.0, cmj: 51.0, aj: 54.5, rsi: 2.1, batSpeed: 70.8 },
+            { id: 2, name: "王俊元", gender: "男", dob: "1998-05-12", height: 178, weight: 80, date: "2026-08-30", sj: 50.0, cmj: 51.0, aj: 55.0, rsi: 2.2, batSpeed: 71.2 },
+            { id: 3, name: "王俊元", gender: "男", dob: "1998-05-12", height: 178, weight: 80, date: "2026-09-06", sj: 49.0, cmj: 53.0, aj: 57.0, rsi: 2.3, batSpeed: 71.5 },
+            { id: 4, name: "王俊元", gender: "男", dob: "1998-05-12", height: 178, weight: 80, date: "2026-09-13", sj: 51.0, cmj: 50.0, aj: 53.5, rsi: 2.0, batSpeed: 71.8 },
+            { id: 5, name: "王俊元", gender: "男", dob: "1998-05-12", height: 178, weight: 80, date: "2026-09-22", sj: 51.0, cmj: 53.0, aj: 57.5, rsi: 2.4, batSpeed: 72.0 }
+        ];
+
+        document.addEventListener("DOMContentLoaded", () => {
+            lucide.createIcons();
+            document.getElementById('inputDate').valueAsDate = new Date();
+            updateAthleteOptions();
+            updateDashboard();
+        });
+
+        // 離心利用率 (EUR) 計算與評估
+        function calculateEUR(cmj, sj) {
+            if (!sj || sj === 0) return 0;
+            return (cmj / sj).toFixed(2);
+        }
+
+        function getEURDiagnosis(eur) {
+            if (eur === 0) return "資料不足";
+            if (eur < 1.05) return "離心率低 (需加強 Plyo)";
+            if (eur > 1.18) return "純肌力不足 (需重訓)";
+            return "發力機制良好";
+        }
+
+        // 1. 新增：擺臂利用率 (Arm Swing Gain) 計算與評估
+        function calculateArmGain(aj, cmj) {
+            if (!aj || !cmj || cmj === 0) return { diff: 0, pct: 0 };
+            const diff = (aj - cmj).toFixed(1);
+            const pct = (((aj - cmj) / cmj) * 100).toFixed(1);
+            return { diff: parseFloat(diff), pct: parseFloat(pct) };
+        }
+
+        function getArmGainDiagnosis(pct) {
+            if (pct === 0) return "無 AJ 資料";
+            if (pct < 5) return "擺臂效益低 (連動待加強)";
+            if (pct > 15) return "擺臂加成極高";
+            return "擺臂連動良好 (5-15%)";
+        }
+
+        function updateAthleteOptions() {
+            const select = document.getElementById('athleteSelect');
+            const currentVal = select.value;
+            const names = [...new Set(records.map(r => r.name))];
+
+            select.innerHTML = '<option value="ALL">全隊總覽 (All Athletes)</option>';
+            names.forEach(name => {
+                const opt = document.createElement('option');
+                opt.value = name;
+                opt.textContent = name;
+                select.appendChild(opt);
+            });
+
+            if (names.includes(currentVal)) {
+                select.value = currentVal;
+            } else {
+                select.value = 'ALL';
+            }
+
+            // 控制刪除隊員按鈕顯示狀態
+            const delBtn = document.getElementById('deleteAthleteBtn');
+            if (select.value !== 'ALL') {
+                delBtn.classList.remove('hidden');
+            } else {
+                delBtn.classList.add('hidden');
+            }
+        }
+
+        // 2. 新增：刪除選取隊員
+        function deleteCurrentAthlete() {
+            const select = document.getElementById('athleteSelect');
+            const targetName = select.value;
+
+            if (targetName === 'ALL') return;
+
+            if (confirm(`確定要刪除隊員「${targetName}」及其所有的歷史數據嗎？此操作無法復原。`)) {
+                records = records.filter(r => r.name !== targetName);
+                updateAthleteOptions();
+                updateDashboard();
+            }
+        }
+
+        function autoFillAthleteProfile(name) {
+            const existing = records.find(r => r.name === name);
+            if (existing) {
+                if (existing.gender) document.getElementById('inputGender').value = existing.gender;
+                if (existing.height) document.getElementById('inputHeight').value = existing.height;
+                if (existing.weight) document.getElementById('inputWeight').value = existing.weight;
+                if (existing.dob) document.getElementById('inputDOB').value = existing.dob;
+            }
+        }
+
+        function handleFormSubmit(e) {
+            e.preventDefault();
+            const newRecord = {
+                id: Date.now(),
+                name: document.getElementById('inputName').value.trim(),
+                gender: document.getElementById('inputGender').value,
+                date: document.getElementById('inputDate').value,
+                height: parseFloat(document.getElementById('inputHeight').value) || null,
+                weight: parseFloat(document.getElementById('inputWeight').value) || null,
+                dob: document.getElementById('inputDOB').value || null,
+                sj: parseFloat(document.getElementById('inputSJ').value),
+                cmj: parseFloat(document.getElementById('inputCMJ').value),
+                aj: parseFloat(document.getElementById('inputAJ').value) || null,
+                rsi: parseFloat(document.getElementById('inputRSI').value) || null,
+                batSpeed: parseFloat(document.getElementById('inputBatSpeed').value)
+            };
+
+            records.push(newRecord);
+            updateAthleteOptions();
+            document.getElementById('athleteSelect').value = newRecord.name;
+            updateDashboard();
+
+            document.getElementById('inputSJ').value = '';
+            document.getElementById('inputCMJ').value = '';
+            document.getElementById('inputAJ').value = '';
+            document.getElementById('inputRSI').value = '';
+            document.getElementById('inputBatSpeed').value = '';
+        }
+
+        function openEditModal(id) {
+            const target = records.find(r => r.id === id);
+            if (!target) return;
+
+            document.getElementById('editId').value = target.id;
+            document.getElementById('editName').value = target.name;
+            document.getElementById('editGender').value = target.gender || '男';
+            document.getElementById('editDate').value = target.date;
+            document.getElementById('editHeight').value = target.height || '';
+            document.getElementById('editWeight').value = target.weight || '';
+            document.getElementById('editDOB').value = target.dob || '';
+            document.getElementById('editSJ').value = target.sj;
+            document.getElementById('editCMJ').value = target.cmj;
+            document.getElementById('editAJ').value = target.aj || '';
+            document.getElementById('editRSI').value = target.rsi || '';
+            document.getElementById('editBatSpeed').value = target.batSpeed;
+
+            document.getElementById('editModal').classList.remove('hidden');
+        }
+
+        function closeEditModal() {
+            document.getElementById('editModal').classList.add('hidden');
+        }
+
+        function handleEditSubmit(e) {
+            e.preventDefault();
+            const id = parseInt(document.getElementById('editId').value);
+            const index = records.findIndex(r => r.id === id);
+
+            if (index !== -1) {
+                records[index] = {
+                    id: id,
+                    name: document.getElementById('editName').value.trim(),
+                    gender: document.getElementById('editGender').value,
+                    date: document.getElementById('editDate').value,
+                    height: parseFloat(document.getElementById('editHeight').value) || null,
+                    weight: parseFloat(document.getElementById('editWeight').value) || null,
+                    dob: document.getElementById('editDOB').value || null,
+                    sj: parseFloat(document.getElementById('editSJ').value),
+                    cmj: parseFloat(document.getElementById('editCMJ').value),
+                    aj: parseFloat(document.getElementById('editAJ').value) || null,
+                    rsi: parseFloat(document.getElementById('editRSI').value) || null,
+                    batSpeed: parseFloat(document.getElementById('editBatSpeed').value)
+                };
+
+                closeEditModal();
+                updateAthleteOptions();
+                updateDashboard();
+            }
+        }
+
+        function deleteRecord(id) {
+            if (confirm("確定要刪除這筆測試紀錄嗎？")) {
+                records = records.filter(r => r.id !== id);
+                updateAthleteOptions();
+                updateDashboard();
+            }
+        }
+
+        function updateDashboard() {
+            const selectedAthlete = document.getElementById('athleteSelect').value;
+            
+            // 切換按鈕顯示
+            const delBtn = document.getElementById('deleteAthleteBtn');
+            if (selectedAthlete !== 'ALL') {
+                delBtn.classList.remove('hidden');
+            } else {
+                delBtn.classList.add('hidden');
+            }
+
+            let filtered = selectedAthlete === 'ALL' ? records : records.filter(r => r.name === selectedAthlete);
+            filtered.sort((a, b) => new Date(a.date) - new Date(b.date));
+
+            const profileDiv = document.getElementById('athleteProfile');
+            if (selectedAthlete !== 'ALL' && filtered.length > 0) {
+                const latest = filtered[filtered.length - 1];
+                profileDiv.classList.remove('hidden');
+                profileDiv.innerHTML = `
+                    <div>性別: <span class="text-white">${latest.gender || '--'}</span></div>
+                    <div>身高: <span class="text-white">${latest.height ? latest.height + ' cm' : '--'}</span></div>
+                    <div>體重: <span class="text-white">${latest.weight ? latest.weight + ' kg' : '--'}</span></div>
+                `;
+            } else {
+                profileDiv.classList.add('hidden');
+            }
+
+            if (filtered.length > 0) {
+                const latest = filtered[filtered.length - 1];
+                const eur = calculateEUR(latest.cmj, latest.sj);
+                const armGain = calculateArmGain(latest.aj, latest.cmj);
+
+                document.getElementById('kpiCMJ').textContent = latest.cmj ? latest.cmj.toFixed(1) : '--';
+                document.getElementById('kpiSJ').textContent = latest.sj ? latest.sj.toFixed(1) : '--';
+                document.getElementById('kpiAJ').textContent = latest.aj ? latest.aj.toFixed(1) : '--';
+                document.getElementById('kpiBatSpeed').textContent = latest.batSpeed ? latest.batSpeed.toFixed(1) : '--';
+                
+                // EUR KPI
+                document.getElementById('kpiEUR').textContent = eur;
+                document.getElementById('kpiEURDiag').textContent = getEURDiagnosis(parseFloat(eur));
+                
+                // Arm Gain KPI
+                document.getElementById('kpiArmGain').textContent = latest.aj ? `+${armGain.diff} cm (${armGain.pct}%)` : '--';
+                document.getElementById('kpiArmDiag').textContent = getArmGainDiagnosis(armGain.pct);
+
+            } else {
+                document.getElementById('kpiCMJ').textContent = '--';
+                document.getElementById('kpiSJ').textContent = '--';
+                document.getElementById('kpiAJ').textContent = '--';
+                document.getElementById('kpiBatSpeed').textContent = '--';
+                document.getElementById('kpiEUR').textContent = '--';
+                document.getElementById('kpiEURDiag').textContent = '無資料';
+                document.getElementById('kpiArmGain').textContent = '--';
+                document.getElementById('kpiArmDiag').textContent = '無資料';
+            }
+
+            // Table Body
+            const tableBody = document.getElementById('dataTableBody');
+            tableBody.innerHTML = '';
+            [...filtered].reverse().forEach(r => {
+                const eur = calculateEUR(r.cmj, r.sj);
+                const armGain = calculateArmGain(r.aj, r.cmj);
+                const tr = document.createElement('tr');
+                tr.innerHTML = `
+                    <td class="p-2">${r.date}</td>
+                    <td class="p-2 font-medium text-white">${r.name}</td>
+                    <td class="p-2 text-amber-400 font-semibold">${r.sj ? r.sj.toFixed(1) : '--'}</td>
+                    <td class="p-2 text-sky-400 font-semibold">${r.cmj ? r.cmj.toFixed(1) : '--'}</td>
+                    <td class="p-2 text-purple-400 font-semibold">${r.aj ? r.aj.toFixed(1) : '--'}</td>
+                    <td class="p-2 text-emerald-400 font-semibold">${r.batSpeed ? r.batSpeed.toFixed(1) : '--'}</td>
+                    <td class="p-2">${eur}</td>
+                    <td class="p-2 text-purple-300 font-medium">${r.aj ? `+${armGain.diff}cm (${armGain.pct}%)` : '--'}</td>
+                    <td class="p-2 flex gap-2">
+                        <button onclick="openEditModal(${r.id})" class="text-sky-400 hover:text-sky-300" title="編輯紀錄">
+                            <i data-lucide="pencil" class="w-4 h-4"></i>
+                        </button>
+                        <button onclick="deleteRecord(${r.id})" class="text-red-400 hover:text-red-300" title="刪除紀錄">
+                            <i data-lucide="trash-2" class="w-4 h-4"></i>
+                        </button>
+                    </td>
+                `;
+                tableBody.appendChild(tr);
+            });
+            lucide.createIcons();
+
+            renderSplitCharts(filtered, selectedAthlete);
+        }
+
+        function renderSplitCharts(data, selectedAthlete) {
+            if (data.length === 0) {
+                Plotly.purge('jumpChart');
+                Plotly.purge('batChart');
+                return;
+            }
+
+            let jumpTraces = [];
+            let batTraces = [];
+
+            if (selectedAthlete !== 'ALL') {
+                const dates = data.map(d => d.date);
+                
+                jumpTraces.push({
+                    x: dates,
+                    y: data.map(d => d.cmj),
+                    name: 'CMJ 反向跳 (cm)',
+                    type: 'scatter',
+                    mode: 'lines+markers',
+                    line: { color: '#38bdf8', width: 3 },
+                    marker: { size: 8 }
+                });
+
+                jumpTraces.push({
+                    x: dates,
+                    y: data.map(d => d.sj),
+                    name: 'SJ 深蹲跳 (cm)',
+                    type: 'scatter',
+                    mode: 'lines+markers',
+                    line: { color: '#fbbf24', width: 2, dash: 'dot' },
+                    marker: { size: 8 }
+                });
+
+                jumpTraces.push({
+                    x: dates,
+                    y: data.map(d => d.aj),
+                    name: 'AJ 擺臂跳 (cm)',
+                    type: 'scatter',
+                    mode: 'lines+markers',
+                    line: { color: '#c084fc', width: 2, dash: 'dashdot' },
+                    marker: { size: 8, symbol: 'square' }
+                });
+
+                batTraces.push({
+                    x: dates,
+                    y: data.map(d => d.batSpeed),
+                    name: '揮棒速度 (mph)',
+                    type: 'scatter',
+                    mode: 'lines+markers',
+                    line: { color: '#34d399', width: 3 },
+                    marker: { size: 8, symbol: 'diamond' }
+                });
+
+                document.getElementById('jumpChartTitle').innerHTML = `<i data-lucide="trending-up" class="text-sky-400"></i> ${selectedAthlete} - 下肢彈跳進步趨勢 (CMJ vs SJ vs AJ)`;
+                document.getElementById('batChartTitle').innerHTML = `<i data-lucide="zap" class="text-emerald-400"></i> ${selectedAthlete} - 揮棒速度進步趨勢 (Bat Speed)`;
+
+            } else {
+                const latestMap = {};
+                data.forEach(d => { latestMap[d.name] = d; });
+                const latestList = Object.values(latestMap);
+
+                const names = latestList.map(d => d.name);
+
+                jumpTraces.push({
+                    x: names,
+                    y: latestList.map(d => d.cmj),
+                    name: 'CMJ (cm)',
+                    type: 'bar',
+                    marker: { color: '#38bdf8' }
+                });
+
+                jumpTraces.push({
+                    x: names,
+                    y: latestList.map(d => d.sj),
+                    name: 'SJ (cm)',
+                    type: 'bar',
+                    marker: { color: '#fbbf24' }
+                });
+
+                jumpTraces.push({
+                    x: names,
+                    y: latestList.map(d => d.aj),
+                    name: 'AJ (cm)',
+                    type: 'bar',
+                    marker: { color: '#c084fc' }
+                });
+
+                batTraces.push({
+                    x: names,
+                    y: latestList.map(d => d.batSpeed),
+                    name: '揮棒速度 (mph)',
+                    type: 'bar',
+                    marker: { color: '#34d399' }
+                });
+
+                document.getElementById('jumpChartTitle').innerHTML = `<i data-lucide="trending-up" class="text-sky-400"></i> 全隊最新下肢彈跳比較 (CMJ vs SJ vs AJ)`;
+                document.getElementById('batChartTitle').innerHTML = `<i data-lucide="zap" class="text-emerald-400"></i> 全隊最新揮棒速度比較 (Bat Speed)`;
+            }
+
+            const commonLayout = {
+                paper_bgcolor: 'transparent',
+                plot_bgcolor: 'transparent',
+                font: { color: '#94a3b8' },
+                margin: { t: 10, r: 30, l: 40, b: 40 },
+                xaxis: { gridcolor: '#334155' },
+                yaxis: { gridcolor: '#334155' },
+                legend: { orientation: 'h', y: 1.2, x: 0 },
+                barmode: 'group'
+            };
+
+            const jumpLayout = {
+                ...commonLayout,
+                yaxis: { ...commonLayout.yaxis, title: '跳躍高度 (cm)' }
+            };
+
+            const batLayout = {
+                ...commonLayout,
+                yaxis: { ...commonLayout.yaxis, title: '揮棒速度 (mph)' }
+            };
+
+            Plotly.newPlot('jumpChart', jumpTraces, jumpLayout, { responsive: true, displayModeBar: false });
+            Plotly.newPlot('batChart', batTraces, batLayout, { responsive: true, displayModeBar: false });
+        }
+
+        function exportCSV() {
+            let csv = "姓名,性別,出生年月日,身高,體重,日期,SJ,CMJ,AJ,RSI,揮棒速度\n";
+            records.forEach(r => {
+                csv += `${r.name},${r.gender||''},${r.dob||''},${r.height||''},${r.weight||''},${r.date},${r.sj},${r.cmj},${r.aj||''},${r.rsi||''},${r.batSpeed}\n`;
+            });
+
+            const blob = new Blob(["\uFEFF" + csv], { type: 'text/csv;charset=utf-8;' });
+            const link = document.createElement("a");
+            link.href = URL.createObjectURL(blob);
+            link.download = `隊員爆發力與揮棒速度紀錄_${new Date().toISOString().slice(0,10)}.csv`;
+            link.click();
+        }
+
+        function importCSV(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = function(evt) {
+                const lines = evt.target.result.split('\n');
+                let count = 0;
+                for (let i = 1; i < lines.length; i++) {
+                    const line = lines[i].trim();
+                    if (!line) continue;
+                    const cols = line.split(',');
+                    if (cols.length >= 6) {
+                        records.push({
+                            id: Date.now() + i,
+                            name: cols[0].trim(),
+                            gender: cols[1]?.trim() || "男",
+                            dob: cols[2]?.trim() || null,
+                            height: parseFloat(cols[3]) || null,
+                            weight: parseFloat(cols[4]) || null,
+                            date: cols[5].trim(),
+                            sj: parseFloat(cols[6]) || 0,
+                            cmj: parseFloat(cols[7]) || 0,
+                            aj: parseFloat(cols[8]) || null,
+                            rsi: parseFloat(cols[9]) || null,
+                            batSpeed: parseFloat(cols[10]) || 0
+                        });
+                        count++;
+                    }
+                }
+                alert(`成功匯入 ${count} 筆資料！`);
+                updateAthleteOptions();
+                updateDashboard();
+            };
+            reader.readAsText(file);
+        }
+    </script>
+</body>
+</html>
