@@ -31,9 +31,9 @@
             </div>
             
             <div class="flex flex-wrap items-center gap-2">
-                <span id="syncStatus" class="px-3 py-1 bg-emerald-950 text-emerald-400 border border-emerald-700/50 rounded-full text-xs font-medium flex items-center gap-1.5">
-                    <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
-                    雲端即時連線 (Firebase Live)
+                <span class="px-3 py-1 bg-slate-800 text-slate-300 border border-slate-600/50 rounded-full text-xs font-medium flex items-center gap-1.5">
+                    <i data-lucide="hard-drive" class="w-3 h-3"></i>
+                    單機安全模式 (資料鎖定於本機記憶體)
                 </span>
                 
                 <button onclick="exportCSV()" class="flex items-center gap-1.5 px-3 py-1.5 bg-slate-700 hover:bg-slate-600 rounded-lg text-xs transition">
@@ -104,7 +104,6 @@
 
         <!-- Dual Chart Layout -->
         <div class="grid grid-cols-1 gap-6">
-            <!-- 1. 下肢彈跳進步趨勢圖 (CMJ vs SJ vs AJ 同欄比較) -->
             <div class="card p-4 md:p-6">
                 <div class="mb-2">
                     <h2 id="jumpChartTitle" class="text-lg font-semibold flex items-center gap-2">
@@ -115,7 +114,6 @@
                 <div id="jumpChart" class="w-full h-[320px]"></div>
             </div>
 
-            <!-- 2. 揮棒速度進步趨勢圖 (Bat Speed 獨立一欄) -->
             <div class="card p-4 md:p-6">
                 <div class="mb-2">
                     <h2 id="batChartTitle" class="text-lg font-semibold flex items-center gap-2">
@@ -332,51 +330,14 @@
         </div>
     </div>
 
-    <!-- Firebase SDK Modules -->
-    <script type="module">
-        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
-        import { getDatabase, ref, onValue, set } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js";
-
-        const firebaseConfig = {
-            databaseURL: "https://softball-performance-default-rtdb.asia-southeast1.firebasedatabase.app/"
-        };
-
-        const app = initializeApp(firebaseConfig);
-        const db = getDatabase(app);
-
-        window.db = db;
-        window.recordsRef = ref(db, 'team_records');
-        window.athletesRef = ref(db, 'team_athletes');
-        window.set = set;
-
-        // 監聽雲端數據 (若雲端沒有數據，保留既有本機數據，不硬帶寫死的資料)
-        onValue(window.recordsRef, (snapshot) => {
-            const data = snapshot.val();
-            if (data !== null) {
-                window.records = Array.isArray(data) ? data : Object.values(data);
-                localStorage.setItem('softball_records_backup', JSON.stringify(window.records));
-            }
-            window.updateAthleteOptions();
-            window.updateDashboard();
-        });
-
-        // 監聽雲端選手基本資料名冊
-        onValue(window.athletesRef, (snapshot) => {
-            const data = snapshot.val();
-            if (data !== null) {
-                window.athletes = data || {};
-                localStorage.setItem('softball_athletes_backup', JSON.stringify(window.athletes));
-            }
-            window.updateAthleteOptions();
-            window.updateDashboard();
-        });
-    </script>
-
     <!-- Application Script -->
     <script>
-        // 優先從本機快取讀取，沒有的話初始化為空物件/陣列，徹底防止重整被硬編碼覆蓋
-        window.athletes = JSON.parse(localStorage.getItem('softball_athletes_backup')) || {};
-        window.records = JSON.parse(localStorage.getItem('softball_records_backup')) || [];
+        // 讀取本機儲存資料 (包含舊版備份救援)
+        let savedAthletes = localStorage.getItem('softball_athletes_v2') || localStorage.getItem('softball_athletes_backup');
+        window.athletes = savedAthletes ? JSON.parse(savedAthletes) : {};
+
+        let savedRecords = localStorage.getItem('softball_records_v2') || localStorage.getItem('softball_records_backup');
+        window.records = savedRecords ? JSON.parse(savedRecords) : [];
 
         document.addEventListener("DOMContentLoaded", () => {
             lucide.createIcons();
@@ -385,16 +346,10 @@
             updateDashboard();
         });
 
-        function syncDataToCloud() {
-            localStorage.setItem('softball_athletes_backup', JSON.stringify(window.athletes));
-            localStorage.setItem('softball_records_backup', JSON.stringify(window.records));
-
-            if (window.recordsRef && window.set) {
-                window.set(window.recordsRef, window.records);
-            }
-            if (window.athletesRef && window.set) {
-                window.set(window.athletesRef, window.athletes);
-            }
+        // 統一儲存至本機
+        function saveDataLocally() {
+            localStorage.setItem('softball_athletes_v2', JSON.stringify(window.athletes));
+            localStorage.setItem('softball_records_v2', JSON.stringify(window.records));
         }
 
         function calculateEUR(cmj, sj) {
@@ -464,7 +419,7 @@
                 labelEl.textContent = `當前正為「${selected}」新增檢測數據：`;
                 submitBtn.disabled = false;
                 submitBtn.className = "w-full mt-4 py-2.5 bg-sky-600 hover:bg-sky-500 rounded-lg font-medium transition text-white cursor-pointer";
-                submitBtn.textContent = `儲存「${selected}」的紀錄並同步`;
+                submitBtn.textContent = `儲存「${selected}」的紀錄`;
             } else {
                 delBtn.classList.add('hidden');
                 targetAthleteInput.value = "全隊總覽 (請先選擇選手)";
@@ -506,7 +461,7 @@
                 weight: parseFloat(document.getElementById('athleteModalWeight').value) || null
             };
 
-            syncDataToCloud();
+            saveDataLocally();
             closeAthleteModal();
             updateAthleteOptions();
             document.getElementById('athleteSelect').value = name;
@@ -522,7 +477,7 @@
             if (confirm(`確定要刪除選手「${targetName}」的名冊及其所有的歷史檢測數據嗎？`)) {
                 delete window.athletes[targetName];
                 window.records = window.records.filter(r => r.name !== targetName);
-                syncDataToCloud();
+                saveDataLocally();
                 select.value = 'ALL';
                 updateAthleteOptions();
                 updateDashboard();
@@ -546,7 +501,7 @@
             };
 
             window.records.push(newRecord);
-            syncDataToCloud();
+            saveDataLocally();
             updateDashboard();
 
             document.getElementById('inputSJ').value = '';
@@ -594,7 +549,7 @@
                 };
 
                 closeEditModal();
-                syncDataToCloud();
+                saveDataLocally();
                 updateDashboard();
             }
         }
@@ -602,7 +557,7 @@
         function deleteRecord(id) {
             if (confirm("確定要刪除這筆檢測紀錄嗎？")) {
                 window.records = window.records.filter(r => r.id !== id);
-                syncDataToCloud();
+                saveDataLocally();
                 updateDashboard();
             }
         }
@@ -861,7 +816,7 @@
                     }
                 }
                 alert(`成功匯入 ${count} 筆資料！`);
-                syncDataToCloud();
+                saveDataLocally();
                 updateAthleteOptions();
                 updateDashboard();
             };
