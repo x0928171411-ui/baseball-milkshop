@@ -245,7 +245,7 @@
         </div>
     </div>
 
-    <!-- Firebase SDK Modules (帶入使用者個人金鑰) -->
+    <!-- Firebase SDK Modules -->
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
         import { getDatabase, ref, onValue, set } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js";
@@ -269,35 +269,31 @@
         window.athletesRef = ref(db, 'team_athletes');
         window.set = set;
 
-        // 成功連線提示
         const syncEl = document.getElementById('syncStatus');
         if (syncEl) {
             syncEl.innerHTML = '<span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span> 你的專屬雲端同步中 (Firebase Live)';
             syncEl.className = "px-3 py-1 bg-emerald-950 text-emerald-400 border border-emerald-700/50 rounded-full text-xs font-medium flex items-center gap-1.5";
         }
 
-        // 監聽紀錄（帶有智慧初次推送防清空機制）
         onValue(window.recordsRef, (snapshot) => {
             const cloudData = snapshot.val();
             if (cloudData !== null) {
-                window.records = Array.isArray(cloudData) ? cloudData : Object.values(cloudData);
+                let list = Array.isArray(cloudData) ? cloudData : Object.values(cloudData);
+                window.records = cleanDuplicateRecords(list);
                 localStorage.setItem('softball_records_v2', JSON.stringify(window.records));
             } else if (window.records && window.records.length > 0) {
-                // 初次連線若雲端為空，自動推送本機現有紀錄上去
                 set(window.recordsRef, window.records);
             }
             window.updateAthleteOptions();
             window.updateDashboard();
         });
 
-        // 監聽選手名冊
         onValue(window.athletesRef, (snapshot) => {
             const cloudData = snapshot.val();
             if (cloudData !== null) {
                 window.athletes = cloudData;
                 localStorage.setItem('softball_athletes_v2', JSON.stringify(window.athletes));
             } else if (Object.keys(window.athletes || {}).length > 0) {
-                // 初次連線若雲端為空，自動推送本機現有名單上去
                 set(window.athletesRef, window.athletes);
             }
             window.updateAthleteOptions();
@@ -307,12 +303,24 @@
 
     <!-- Application Main Script -->
     <script>
-        // 優先載入本機備份 (含救援舊資料)
         let savedAthletes = localStorage.getItem('softball_athletes_v2') || localStorage.getItem('softball_athletes_backup');
         window.athletes = savedAthletes ? JSON.parse(savedAthletes) : {};
 
         let savedRecords = localStorage.getItem('softball_records_v2') || localStorage.getItem('softball_records_backup');
-        window.records = savedRecords ? JSON.parse(savedRecords) : [];
+        window.records = savedRecords ? cleanDuplicateRecords(JSON.parse(savedRecords)) : [];
+
+        // 自動清理同選手同日期的重複資料（保留最新的一筆）
+        function cleanDuplicateRecords(list) {
+            if (!Array.isArray(list)) return [];
+            const recordMap = new Map();
+            list.forEach(r => {
+                if (r && r.name && r.date) {
+                    const key = `${r.name}_${r.date}`;
+                    recordMap.set(key, r); // 後出現的會直接覆蓋先出現的
+                }
+            });
+            return Array.from(recordMap.values());
+        }
 
         document.addEventListener("DOMContentLoaded", () => {
             lucide.createIcons();
@@ -322,6 +330,7 @@
         });
 
         function saveDataLocally() {
+            window.records = cleanDuplicateRecords(window.records);
             localStorage.setItem('softball_athletes_v2', JSON.stringify(window.athletes));
             localStorage.setItem('softball_records_v2', JSON.stringify(window.records));
 
@@ -426,13 +435,21 @@
             }
         }
 
+        // 新增紀錄（若相同日期已有資料，自動覆蓋更新）
         function handleFormSubmit(e) {
             e.preventDefault();
             const athleteName = document.getElementById('athleteSelect').value;
             if (athleteName === 'ALL') return;
 
+            const inputDate = document.getElementById('inputDate').value;
+
+            // 先過濾掉同名且同日期的舊紀錄，確保覆蓋
+            window.records = window.records.filter(r => !(r.name === athleteName && r.date === inputDate));
+
             window.records.push({
-                id: Date.now(), name: athleteName, date: document.getElementById('inputDate').value,
+                id: Date.now(), 
+                name: athleteName, 
+                date: inputDate,
                 sj: parseFloat(document.getElementById('inputSJ').value),
                 cmj: parseFloat(document.getElementById('inputCMJ').value),
                 aj: parseFloat(document.getElementById('inputAJ').value) || null,
@@ -611,6 +628,7 @@
             link.click();
         }
 
+        // 匯入 CSV 智慧去重與覆蓋邏輯
         function importCSV(e) {
             const file = e.target.files[0];
             if (!file) return;
@@ -625,28 +643,35 @@
                     const cols = line.split(',');
                     if (cols.length >= 6) {
                         const name = cols[0].trim();
-                        if (name && !window.athletes[name]) {
-                            window.athletes[name] = {
-                                gender: cols[1]?.trim() || "男",
-                                dob: cols[2]?.trim() || null,
-                                height: parseFloat(cols[3]) || null,
-                                weight: parseFloat(cols[4]) || null
-                            };
+                        const date = cols[5].trim();
+                        if (name && date) {
+                            if (!window.athletes[name]) {
+                                window.athletes[name] = {
+                                    gender: cols[1]?.trim() || "男",
+                                    dob: cols[2]?.trim() || null,
+                                    height: parseFloat(cols[3]) || null,
+                                    weight: parseFloat(cols[4]) || null
+                                };
+                            }
+
+                            // 先刪除同名且同日期的舊筆數（確保覆蓋更新）
+                            window.records = window.records.filter(r => !(r.name === name && r.date === date));
+
+                            window.records.push({
+                                id: Date.now() + i,
+                                name: name,
+                                date: date,
+                                sj: parseFloat(cols[6]) || 0,
+                                cmj: parseFloat(cols[7]) || 0,
+                                aj: parseFloat(cols[8]) || null,
+                                rsi: parseFloat(cols[9]) || null,
+                                batSpeed: parseFloat(cols[10]) || 0
+                            });
+                            count++;
                         }
-                        window.records.push({
-                            id: Date.now() + i,
-                            name: name,
-                            date: cols[5].trim(),
-                            sj: parseFloat(cols[6]) || 0,
-                            cmj: parseFloat(cols[7]) || 0,
-                            aj: parseFloat(cols[8]) || null,
-                            rsi: parseFloat(cols[9]) || null,
-                            batSpeed: parseFloat(cols[10]) || 0
-                        });
-                        count++;
                     }
                 }
-                alert(`成功匯入 ${count} 筆資料！`);
+                alert(`成功處理 ${count} 筆檢測資料（同日期的舊數據已自動覆蓋更新）！`);
                 saveDataLocally();
                 updateAthleteOptions();
                 updateDashboard();
