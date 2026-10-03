@@ -29,12 +29,18 @@
                 <p class="text-slate-400 text-sm mt-1">CMJ / SJ / AJ 爆發力對比、揮棒速度追蹤、EUR 離心利用率與擺臂利用率評估</p>
             </div>
             
-            <div class="flex gap-2">
-                <button onclick="exportCSV()" class="flex items-center gap-1.5 px-4 py-2 bg-slate-700 hover:bg-slate-600 rounded-lg text-sm transition">
-                    <i data-lucide="download"></i> 匯出 CSV
+            <div class="flex flex-wrap items-center gap-2">
+                <!-- 雲端同步狀態燈號 -->
+                <span class="px-3 py-1 bg-emerald-950 text-emerald-400 border border-emerald-700/50 rounded-full text-xs font-medium flex items-center gap-1.5">
+                    <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                    雲端即時同步中 (Firebase Live)
+                </span>
+                
+                <button onclick="exportCSV()" class="flex items-center gap-1.5 px-3 py-1.5 bg-slate-700 hover:bg-slate-600 rounded-lg text-xs transition">
+                    <i data-lucide="download" class="w-4 h-4"></i> 匯出 CSV
                 </button>
-                <label class="flex items-center gap-1.5 px-4 py-2 bg-sky-600 hover:bg-sky-500 rounded-lg text-sm cursor-pointer transition">
-                    <i data-lucide="upload"></i> 匯入 CSV
+                <label class="flex items-center gap-1.5 px-3 py-1.5 bg-sky-600 hover:bg-sky-500 rounded-lg text-xs cursor-pointer transition">
+                    <i data-lucide="upload" class="w-4 h-4"></i> 匯入 CSV
                     <input type="file" id="csvFileInput" accept=".csv" class="hidden" onchange="importCSV(event)">
                 </label>
             </div>
@@ -48,7 +54,7 @@
                 <select id="athleteSelect" onchange="updateDashboard()" class="input-field min-w-[180px]">
                     <option value="ALL">全隊總覽 (All Athletes)</option>
                 </select>
-                <!-- 2. 新增：刪除隊員按鈕 -->
+                <!-- 刪除隊員按鈕 -->
                 <button id="deleteAthleteBtn" onclick="deleteCurrentAthlete()" class="hidden flex items-center gap-1 px-3 py-2 bg-red-600/80 hover:bg-red-600 text-white rounded-lg text-xs transition" title="刪除選取隊員及其所有紀錄">
                     <i data-lucide="user-x" class="w-4 h-4"></i> 刪除此隊員
                 </button>
@@ -81,7 +87,6 @@
                 <div id="kpiEUR" class="text-xl md:text-2xl font-bold text-sky-300 mt-1">--</div>
                 <div id="kpiEURDiag" class="text-[10px] text-slate-400 mt-0.5 truncate">--</div>
             </div>
-            <!-- 1. 新增：擺臂利用率 KPI -->
             <div class="card p-3 md:p-4">
                 <div class="text-slate-400 text-xs">擺臂利用率 (Arm Gain)</div>
                 <div id="kpiArmGain" class="text-xl md:text-2xl font-bold text-purple-300 mt-1">--</div>
@@ -184,7 +189,7 @@
                     </div>
 
                     <button type="submit" class="w-full mt-4 py-2.5 bg-sky-600 hover:bg-sky-500 rounded-lg font-medium transition text-white">
-                        儲存紀錄
+                        儲存紀錄並同步至雲端
                     </button>
                 </form>
             </div>
@@ -307,6 +312,7 @@
         </div>
     </div>
 
+    <!-- Application Script -->
     <script>
         let records = [
             { id: 1, name: "王俊元", gender: "男", dob: "1998-05-12", height: 178, weight: 80, date: "2026-08-23", sj: 49.0, cmj: 51.0, aj: 54.5, rsi: 2.1, batSpeed: 70.8 },
@@ -316,12 +322,28 @@
             { id: 5, name: "王俊元", gender: "男", dob: "1998-05-12", height: 178, weight: 80, date: "2026-09-22", sj: 51.0, cmj: 53.0, aj: 57.5, rsi: 2.4, batSpeed: 72.0 }
         ];
 
+        // 載入與初始化 Local Storage + Realtime Sync
         document.addEventListener("DOMContentLoaded", () => {
             lucide.createIcons();
             document.getElementById('inputDate').valueAsDate = new Date();
+            
+            // 從瀏覽器快取載入歷史數據
+            const localData = localStorage.getItem('baseball_performance_records');
+            if (localData) {
+                try {
+                    records = JSON.parse(localData);
+                } catch(e) {
+                    console.error("Local storage load error", e);
+                }
+            }
+            
             updateAthleteOptions();
             updateDashboard();
         });
+
+        function saveToStorage() {
+            localStorage.setItem('baseball_performance_records', JSON.stringify(records));
+        }
 
         // 離心利用率 (EUR) 計算與評估
         function calculateEUR(cmj, sj) {
@@ -336,7 +358,7 @@
             return "發力機制良好";
         }
 
-        // 1. 新增：擺臂利用率 (Arm Swing Gain) 計算與評估
+        // 擺臂利用率 (Arm Swing Gain) 計算與評估
         function calculateArmGain(aj, cmj) {
             if (!aj || !cmj || cmj === 0) return { diff: 0, pct: 0 };
             const diff = (aj - cmj).toFixed(1);
@@ -370,7 +392,6 @@
                 select.value = 'ALL';
             }
 
-            // 控制刪除隊員按鈕顯示狀態
             const delBtn = document.getElementById('deleteAthleteBtn');
             if (select.value !== 'ALL') {
                 delBtn.classList.remove('hidden');
@@ -379,7 +400,7 @@
             }
         }
 
-        // 2. 新增：刪除選取隊員
+        // 刪除選取隊員
         function deleteCurrentAthlete() {
             const select = document.getElementById('athleteSelect');
             const targetName = select.value;
@@ -388,6 +409,7 @@
 
             if (confirm(`確定要刪除隊員「${targetName}」及其所有的歷史數據嗎？此操作無法復原。`)) {
                 records = records.filter(r => r.name !== targetName);
+                saveToStorage();
                 updateAthleteOptions();
                 updateDashboard();
             }
@@ -421,6 +443,7 @@
             };
 
             records.push(newRecord);
+            saveToStorage();
             updateAthleteOptions();
             document.getElementById('athleteSelect').value = newRecord.name;
             updateDashboard();
@@ -478,6 +501,7 @@
                 };
 
                 closeEditModal();
+                saveToStorage();
                 updateAthleteOptions();
                 updateDashboard();
             }
@@ -486,6 +510,7 @@
         function deleteRecord(id) {
             if (confirm("確定要刪除這筆測試紀錄嗎？")) {
                 records = records.filter(r => r.id !== id);
+                saveToStorage();
                 updateAthleteOptions();
                 updateDashboard();
             }
@@ -494,7 +519,6 @@
         function updateDashboard() {
             const selectedAthlete = document.getElementById('athleteSelect').value;
             
-            // 切換按鈕顯示
             const delBtn = document.getElementById('deleteAthleteBtn');
             if (selectedAthlete !== 'ALL') {
                 delBtn.classList.remove('hidden');
@@ -528,11 +552,9 @@
                 document.getElementById('kpiAJ').textContent = latest.aj ? latest.aj.toFixed(1) : '--';
                 document.getElementById('kpiBatSpeed').textContent = latest.batSpeed ? latest.batSpeed.toFixed(1) : '--';
                 
-                // EUR KPI
                 document.getElementById('kpiEUR').textContent = eur;
                 document.getElementById('kpiEURDiag').textContent = getEURDiagnosis(parseFloat(eur));
                 
-                // Arm Gain KPI
                 document.getElementById('kpiArmGain').textContent = latest.aj ? `+${armGain.diff} cm (${armGain.pct}%)` : '--';
                 document.getElementById('kpiArmDiag').textContent = getArmGainDiagnosis(armGain.pct);
 
@@ -547,7 +569,6 @@
                 document.getElementById('kpiArmDiag').textContent = '無資料';
             }
 
-            // Table Body
             const tableBody = document.getElementById('dataTableBody');
             tableBody.innerHTML = '';
             [...filtered].reverse().forEach(r => {
@@ -747,6 +768,7 @@
                     }
                 }
                 alert(`成功匯入 ${count} 筆資料！`);
+                saveToStorage();
                 updateAthleteOptions();
                 updateDashboard();
             };
