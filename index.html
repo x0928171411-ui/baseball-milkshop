@@ -349,10 +349,13 @@
         window.athletesRef = ref(db, 'team_athletes');
         window.set = set;
 
-        // 監聽雲端數據
+        // 監聽雲端數據 (若雲端沒有數據，保留既有本機數據，不硬帶寫死的資料)
         onValue(window.recordsRef, (snapshot) => {
             const data = snapshot.val();
-            window.records = data ? (Array.isArray(data) ? data : Object.values(data)) : [];
+            if (data !== null) {
+                window.records = Array.isArray(data) ? data : Object.values(data);
+                localStorage.setItem('softball_records_backup', JSON.stringify(window.records));
+            }
             window.updateAthleteOptions();
             window.updateDashboard();
         });
@@ -360,7 +363,10 @@
         // 監聽雲端選手基本資料名冊
         onValue(window.athletesRef, (snapshot) => {
             const data = snapshot.val();
-            window.athletes = data || {};
+            if (data !== null) {
+                window.athletes = data || {};
+                localStorage.setItem('softball_athletes_backup', JSON.stringify(window.athletes));
+            }
             window.updateAthleteOptions();
             window.updateDashboard();
         });
@@ -368,19 +374,9 @@
 
     <!-- Application Script -->
     <script>
-        window.athletes = {
-            "陳冠志": { gender: "男", dob: "1986-08-01", height: 175, weight: 78 },
-            "王俊元": { gender: "男", dob: "1998-05-12", height: 178, weight: 80 },
-            "朱育辰": { gender: "男", dob: "1995-02-15", height: 180, weight: 85 },
-            "林豐俊": { gender: "男", dob: "1992-11-20", height: 172, weight: 73 }
-        };
-
-        window.records = [
-            { id: 1, name: "陳冠志", date: "2026-08-23", sj: 47.0, cmj: 49.0, aj: 53.0, rsi: 2.1, batSpeed: 71.0 },
-            { id: 2, name: "王俊元", date: "2026-08-23", sj: 49.0, cmj: 51.0, aj: 54.5, rsi: 2.1, batSpeed: 70.8 },
-            { id: 3, name: "朱育辰", date: "2026-08-23", sj: 52.0, cmj: 55.0, aj: 63.0, rsi: 2.5, batSpeed: 76.5 },
-            { id: 4, name: "林豐俊", date: "2026-08-23", sj: 45.0, cmj: 48.0, aj: 52.0, rsi: 2.0, batSpeed: 69.5 }
-        ];
+        // 優先從本機快取讀取，沒有的話初始化為空物件/陣列，徹底防止重整被硬編碼覆蓋
+        window.athletes = JSON.parse(localStorage.getItem('softball_athletes_backup')) || {};
+        window.records = JSON.parse(localStorage.getItem('softball_records_backup')) || [];
 
         document.addEventListener("DOMContentLoaded", () => {
             lucide.createIcons();
@@ -390,6 +386,9 @@
         });
 
         function syncDataToCloud() {
+            localStorage.setItem('softball_athletes_backup', JSON.stringify(window.athletes));
+            localStorage.setItem('softball_records_backup', JSON.stringify(window.records));
+
             if (window.recordsRef && window.set) {
                 window.set(window.recordsRef, window.records);
             }
@@ -424,12 +423,10 @@
             return "擺臂連動良好 (5-15%)";
         }
 
-        // 當上方選擇選手觸發
         function onAthleteSelectChange() {
             updateDashboard();
         }
 
-        // 更新選手選單與連動表單
         function updateAthleteOptions() {
             const select = document.getElementById('athleteSelect');
             const currentVal = select.value;
@@ -454,7 +451,6 @@
             syncFormWithSelection();
         }
 
-        // 表單同步連動關鍵函數
         function syncFormWithSelection() {
             const selected = document.getElementById('athleteSelect').value;
             const delBtn = document.getElementById('deleteAthleteBtn');
@@ -471,7 +467,7 @@
                 submitBtn.textContent = `儲存「${selected}」的紀錄並同步`;
             } else {
                 delBtn.classList.add('hidden');
-                targetAthleteInput.value = "全隊總覽 (請先在上方選擇選手)";
+                targetAthleteInput.value = "全隊總覽 (請先選擇選手)";
                 labelEl.textContent = "請先在上方下拉選單選擇特定選手以進行紀錄";
                 submitBtn.disabled = true;
                 submitBtn.className = "w-full mt-4 py-2.5 bg-slate-700 text-slate-400 rounded-lg font-medium transition cursor-not-allowed";
