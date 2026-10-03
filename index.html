@@ -15,6 +15,7 @@
         .card { background-color: #1e293b; border: 1px solid #334155; border-radius: 0.75rem; }
         .input-field { background-color: #0f172a; border: 1px solid #475569; color: #f8fafc; border-radius: 0.5rem; padding: 0.5rem 0.75rem; }
         .input-field:focus { outline: none; border-color: #38bdf8; }
+        .input-disabled { background-color: #1e293b; border: 1px solid #334155; color: #94a3b8; cursor: not-allowed; }
     </style>
 </head>
 <body class="p-4 md:p-8">
@@ -30,10 +31,9 @@
             </div>
             
             <div class="flex flex-wrap items-center gap-2">
-                <!-- 雲端同步狀態燈號 -->
-                <span id="syncStatus" class="px-3 py-1 bg-amber-950 text-amber-400 border border-amber-700/50 rounded-full text-xs font-medium flex items-center gap-1.5">
-                    <span class="w-2 h-2 rounded-full bg-amber-400 animate-pulse"></span>
-                    雲端連線中...
+                <span id="syncStatus" class="px-3 py-1 bg-emerald-950 text-emerald-400 border border-emerald-700/50 rounded-full text-xs font-medium flex items-center gap-1.5">
+                    <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                    雲端即時連線 (Firebase Live)
                 </span>
                 
                 <button onclick="exportCSV()" class="flex items-center gap-1.5 px-3 py-1.5 bg-slate-700 hover:bg-slate-600 rounded-lg text-xs transition">
@@ -46,20 +46,28 @@
             </div>
         </div>
 
-        <!-- Controls & Athlete Selection -->
+        <!-- Controls & Athlete Selection Bar -->
         <div class="card p-4 flex flex-col md:flex-row justify-between items-center gap-4">
-            <div class="flex items-center gap-3 w-full md:w-auto">
+            <div class="flex flex-wrap items-center gap-3 w-full md:w-auto">
                 <i data-lucide="users" class="text-sky-400"></i>
                 <span class="font-medium">選擇分析隊員：</span>
-                <select id="athleteSelect" onchange="updateDashboard()" class="input-field min-w-[180px]">
+                <select id="athleteSelect" onchange="updateDashboard()" class="input-field min-w-[200px]">
                     <option value="ALL">全隊總覽 (All Athletes)</option>
                 </select>
-                <!-- 刪除隊員按鈕 -->
+                
+                <!-- 選手名冊管理按鈕 -->
+                <button onclick="openAthleteModal()" class="flex items-center gap-1 px-3 py-2 bg-sky-600/80 hover:bg-sky-600 text-white rounded-lg text-xs transition">
+                    <i data-lucide="user-plus" class="w-4 h-4"></i> 新增/管理選手
+                </button>
+                
+                <!-- 刪除選手按鈕 -->
                 <button id="deleteAthleteBtn" onclick="deleteCurrentAthlete()" class="hidden flex items-center gap-1 px-3 py-2 bg-red-600/80 hover:bg-red-600 text-white rounded-lg text-xs transition" title="刪除選取隊員及其所有紀錄">
-                    <i data-lucide="user-x" class="w-4 h-4"></i> 刪除此隊員
+                    <i data-lucide="user-x" class="w-4 h-4"></i> 刪除此選手
                 </button>
             </div>
-            <div id="athleteProfile" class="text-sm text-slate-300 hidden md:flex gap-6">
+            
+            <!-- 選取選手資料預覽與編輯 -->
+            <div id="athleteProfile" class="text-sm text-slate-300 hidden md:flex items-center gap-4 bg-slate-800/60 px-4 py-2 rounded-lg border border-slate-700">
                 <!-- Auto populated -->
             </div>
         </div>
@@ -122,44 +130,25 @@
         <!-- Data Entry Form & History Table Grid -->
         <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
             
-            <!-- Input Form -->
+            <!-- Input Form：登記測量紀錄（不需重複填寫基本資料） -->
             <div class="card p-5">
-                <h3 class="text-md font-semibold text-sky-400 mb-4 flex items-center gap-2">
-                    <i data-lucide="plus-circle"></i> 新增測量紀錄
+                <h3 class="text-md font-semibold text-sky-400 mb-1 flex items-center gap-2">
+                    <i data-lucide="plus-circle"></i> 新增檢測紀錄
                 </h3>
+                <p id="targetAthleteLabel" class="text-xs text-amber-400 font-medium mb-4">
+                    請先在上方下拉選單選擇特定選手以進行紀錄
+                </p>
+
                 <form id="recordForm" onsubmit="handleFormSubmit(event)" class="space-y-3 text-sm">
+                    <!-- 連動帶入目前選手 -->
                     <div>
-                        <label class="block text-slate-400 mb-1">選手姓名</label>
-                        <input type="text" id="inputName" required placeholder="例如：王俊元" class="input-field w-full" onchange="autoFillAthleteProfile(this.value)">
-                    </div>
-                    
-                    <div class="grid grid-cols-2 gap-2">
-                        <div>
-                            <label class="block text-slate-400 mb-1">性別</label>
-                            <select id="inputGender" class="input-field w-full">
-                                <option value="男">男</option>
-                                <option value="女">女</option>
-                            </select>
-                        </div>
-                        <div>
-                            <label class="block text-slate-400 mb-1">測試日期</label>
-                            <input type="date" id="inputDate" required class="input-field w-full">
-                        </div>
+                        <label class="block text-slate-400 mb-1">當前登記選手</label>
+                        <input type="text" id="inputTargetAthlete" readonly class="input-field input-disabled w-full font-bold text-sky-300" value="全隊總覽 (請先選擇選手)">
                     </div>
 
-                    <div class="grid grid-cols-3 gap-2">
-                        <div>
-                            <label class="block text-slate-400 mb-1">身高 (cm)</label>
-                            <input type="number" step="0.1" id="inputHeight" placeholder="178" class="input-field w-full">
-                        </div>
-                        <div>
-                            <label class="block text-slate-400 mb-1">體重 (kg)</label>
-                            <input type="number" step="0.1" id="inputWeight" placeholder="80" class="input-field w-full">
-                        </div>
-                        <div>
-                            <label class="block text-slate-400 mb-1">出生年月日</label>
-                            <input type="date" id="inputDOB" class="input-field w-full">
-                        </div>
+                    <div>
+                        <label class="block text-slate-400 mb-1">檢測日期</label>
+                        <input type="date" id="inputDate" required class="input-field w-full">
                     </div>
 
                     <div class="grid grid-cols-3 gap-2 pt-2 border-t border-slate-700">
@@ -188,8 +177,8 @@
                         </div>
                     </div>
 
-                    <button type="submit" class="w-full mt-4 py-2.5 bg-sky-600 hover:bg-sky-500 rounded-lg font-medium transition text-white">
-                        儲存紀錄並即時同步雲端
+                    <button type="submit" id="submitRecordBtn" disabled class="w-full mt-4 py-2.5 bg-slate-700 text-slate-400 rounded-lg font-medium transition cursor-not-allowed">
+                        請先在上方選擇隊員
                     </button>
                 </form>
             </div>
@@ -198,7 +187,7 @@
             <div class="card p-5 lg:col-span-2 flex flex-col justify-between">
                 <div>
                     <h3 class="text-md font-semibold text-sky-400 mb-4 flex items-center gap-2">
-                        <i data-lucide="database"></i> 歷史數據紀錄表
+                        <i data-lucide="database"></i> 歷史檢測數據表
                     </h3>
                     <div class="overflow-x-auto">
                         <table class="w-full text-left text-sm text-slate-300">
@@ -226,12 +215,67 @@
         </div>
     </div>
 
-    <!-- Edit Record Modal -->
+    <!-- 選手名冊與基本資料管理 Modal -->
+    <div id="athleteModal" class="fixed inset-0 bg-black/70 backdrop-blur-sm hidden flex items-center justify-center p-4 z-50">
+        <div class="card p-6 w-full max-w-md space-y-4">
+            <div class="flex justify-between items-center pb-2 border-b border-slate-700">
+                <h3 class="text-lg font-semibold text-sky-400 flex items-center gap-2">
+                    <i data-lucide="user-cog"></i> 選手基本資料建置
+                </h3>
+                <button onclick="closeAthleteModal()" class="text-slate-400 hover:text-white">
+                    <i data-lucide="x" class="w-5 h-5"></i>
+                </button>
+            </div>
+            
+            <form id="athleteForm" onsubmit="handleAthleteSubmit(event)" class="space-y-3 text-sm">
+                <div>
+                    <label class="block text-slate-400 mb-1">選手姓名 *</label>
+                    <input type="text" id="athleteModalName" required placeholder="例如：林豐俊" class="input-field w-full">
+                </div>
+                
+                <div class="grid grid-cols-2 gap-2">
+                    <div>
+                        <label class="block text-slate-400 mb-1">性別</label>
+                        <select id="athleteModalGender" class="input-field w-full">
+                            <option value="男">男</option>
+                            <option value="女">女</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-slate-400 mb-1">出生年月日</label>
+                        <input type="date" id="athleteModalDOB" class="input-field w-full">
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-2 gap-2">
+                    <div>
+                        <label class="block text-slate-400 mb-1">身高 (cm)</label>
+                        <input type="number" step="0.1" id="athleteModalHeight" placeholder="175" class="input-field w-full">
+                    </div>
+                    <div>
+                        <label class="block text-slate-400 mb-1">體重 (kg)</label>
+                        <input type="number" step="0.1" id="athleteModalWeight" placeholder="75" class="input-field w-full">
+                    </div>
+                </div>
+
+                <div class="flex gap-2 pt-2">
+                    <button type="button" onclick="closeAthleteModal()" class="w-1/2 py-2 bg-slate-700 hover:bg-slate-600 rounded-lg font-medium transition text-white">
+                        取消
+                    </button>
+                    <button type="submit" class="w-1/2 py-2 bg-sky-600 hover:bg-sky-500 rounded-lg font-medium transition text-white">
+                        建置 / 儲存選手
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- 編輯數據紀錄 Modal -->
     <div id="editModal" class="fixed inset-0 bg-black/70 backdrop-blur-sm hidden flex items-center justify-center p-4 z-50">
         <div class="card p-6 w-full max-w-lg space-y-4">
             <div class="flex justify-between items-center pb-2 border-b border-slate-700">
                 <h3 class="text-lg font-semibold text-sky-400 flex items-center gap-2">
-                    <i data-lucide="edit"></i> 編輯紀錄數據
+                    <i data-lucide="edit"></i> 編輯檢測紀錄
                 </h3>
                 <button onclick="closeEditModal()" class="text-slate-400 hover:text-white">
                     <i data-lucide="x" class="w-5 h-5"></i>
@@ -242,36 +286,12 @@
                 <input type="hidden" id="editId">
                 <div>
                     <label class="block text-slate-400 mb-1">選手姓名</label>
-                    <input type="text" id="editName" required class="input-field w-full">
+                    <input type="text" id="editName" readonly class="input-field input-disabled w-full font-bold text-sky-300">
                 </div>
                 
-                <div class="grid grid-cols-2 gap-2">
-                    <div>
-                        <label class="block text-slate-400 mb-1">性別</label>
-                        <select id="editGender" class="input-field w-full">
-                            <option value="男">男</option>
-                            <option value="女">女</option>
-                        </select>
-                    </div>
-                    <div>
-                        <label class="block text-slate-400 mb-1">測試日期</label>
-                        <input type="date" id="editDate" required class="input-field w-full">
-                    </div>
-                </div>
-
-                <div class="grid grid-cols-3 gap-2">
-                    <div>
-                        <label class="block text-slate-400 mb-1">身高 (cm)</label>
-                        <input type="number" step="0.1" id="editHeight" class="input-field w-full">
-                    </div>
-                    <div>
-                        <label class="block text-slate-400 mb-1">體重 (kg)</label>
-                        <input type="number" step="0.1" id="editWeight" class="input-field w-full">
-                    </div>
-                    <div>
-                        <label class="block text-slate-400 mb-1">出生年月日</label>
-                        <input type="date" id="editDOB" class="input-field w-full">
-                    </div>
+                <div>
+                    <label class="block text-slate-400 mb-1">測試日期</label>
+                    <input type="date" id="editDate" required class="input-field w-full">
                 </div>
 
                 <div class="grid grid-cols-3 gap-2 pt-2 border-t border-slate-700">
@@ -312,40 +332,35 @@
         </div>
     </div>
 
-    <!-- Firebase SDK Imports -->
+    <!-- Firebase SDK Modules -->
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
         import { getDatabase, ref, onValue, set } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js";
 
-        // Firebase 共享即時資料庫設定
         const firebaseConfig = {
             databaseURL: "https://softball-performance-default-rtdb.asia-southeast1.firebasedatabase.app/"
         };
 
         const app = initializeApp(firebaseConfig);
         const db = getDatabase(app);
-        const recordsRef = ref(db, 'team_records');
 
         window.db = db;
-        window.recordsRef = recordsRef;
+        window.recordsRef = ref(db, 'team_records');
+        window.athletesRef = ref(db, 'team_athletes');
         window.set = set;
 
-        // 監聽雲端資料庫（任何裝置修改，全體即時同步）
-        onValue(recordsRef, (snapshot) => {
+        // 監聽雲端數據
+        onValue(window.recordsRef, (snapshot) => {
             const data = snapshot.val();
-            if (data) {
-                window.records = Array.isArray(data) ? data : Object.values(data);
-            } else {
-                window.records = [];
-            }
-            
-            // 更新雲端燈號為綠色成功狀態
-            const statusEl = document.getElementById('syncStatus');
-            if (statusEl) {
-                statusEl.className = "px-3 py-1 bg-emerald-950 text-emerald-400 border border-emerald-700/50 rounded-full text-xs font-medium flex items-center gap-1.5";
-                statusEl.innerHTML = `<span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span> 雲端即時連線 (Firebase Live)`;
-            }
+            window.records = data ? (Array.isArray(data) ? data : Object.values(data)) : [];
+            window.updateAthleteOptions();
+            window.updateDashboard();
+        });
 
+        // 監聽雲端選手基本資料名冊
+        onValue(window.athletesRef, (snapshot) => {
+            const data = snapshot.val();
+            window.athletes = data || {};
             window.updateAthleteOptions();
             window.updateDashboard();
         });
@@ -353,11 +368,19 @@
 
     <!-- Application Script -->
     <script>
+        // 初始化選手名冊與紀錄
+        window.athletes = {
+            "陳冠志": { gender: "男", dob: "1986-08-01", height: 175, weight: 78 },
+            "王俊元": { gender: "男", dob: "1998-05-12", height: 178, weight: 80 },
+            "朱育辰": { gender: "男", dob: "1995-02-15", height: 180, weight: 85 },
+            "林豐俊": { gender: "男", dob: "1992-11-20", height: 172, weight: 73 }
+        };
+
         window.records = [
-            { id: 1, name: "陳冠志", gender: "男", dob: "1986-08-01", height: 175, weight: 78, date: "2026-08-23", sj: 47.0, cmj: 49.0, aj: 53.0, rsi: 2.1, batSpeed: 71.0 },
-            { id: 2, name: "王俊元", gender: "男", dob: "1998-05-12", height: 178, weight: 80, date: "2026-08-23", sj: 49.0, cmj: 51.0, aj: 54.5, rsi: 2.1, batSpeed: 70.8 },
-            { id: 3, name: "朱育辰", gender: "男", dob: "1995-02-15", height: 180, weight: 85, date: "2026-08-23", sj: 52.0, cmj: 55.0, aj: 63.0, rsi: 2.5, batSpeed: 76.5 },
-            { id: 4, name: "林豐俊", gender: "男", dob: "1992-11-20", height: 172, weight: 73, date: "2026-08-23", sj: 45.0, cmj: 48.0, aj: 52.0, rsi: 2.0, batSpeed: 69.5 }
+            { id: 1, name: "陳冠志", date: "2026-08-23", sj: 47.0, cmj: 49.0, aj: 53.0, rsi: 2.1, batSpeed: 71.0 },
+            { id: 2, name: "王俊元", date: "2026-08-23", sj: 49.0, cmj: 51.0, aj: 54.5, rsi: 2.1, batSpeed: 70.8 },
+            { id: 3, name: "朱育辰", date: "2026-08-23", sj: 52.0, cmj: 55.0, aj: 63.0, rsi: 2.5, batSpeed: 76.5 },
+            { id: 4, name: "林豐俊", date: "2026-08-23", sj: 45.0, cmj: 48.0, aj: 52.0, rsi: 2.0, batSpeed: 69.5 }
         ];
 
         document.addEventListener("DOMContentLoaded", () => {
@@ -367,9 +390,12 @@
             updateDashboard();
         });
 
-        function syncToCloud() {
+        function syncDataToCloud() {
             if (window.recordsRef && window.set) {
                 window.set(window.recordsRef, window.records);
+            }
+            if (window.athletesRef && window.set) {
+                window.set(window.athletesRef, window.athletes);
             }
         }
 
@@ -399,67 +425,117 @@
             return "擺臂連動良好 (5-15%)";
         }
 
+        // 更新選手選單與畫面連動
         function updateAthleteOptions() {
             const select = document.getElementById('athleteSelect');
             const currentVal = select.value;
-            const names = [...new Set(window.records.map(r => r.name))];
+            
+            // 結合名冊與歷史資料中的選手
+            const athleteNames = [...new Set([
+                ...Object.keys(window.athletes || {}),
+                ...window.records.map(r => r.name)
+            ])];
 
             select.innerHTML = '<option value="ALL">全隊總覽 (All Athletes)</option>';
-            names.forEach(name => {
+            athleteNames.forEach(name => {
                 const opt = document.createElement('option');
                 opt.value = name;
                 opt.textContent = name;
                 select.appendChild(opt);
             });
 
-            if (names.includes(currentVal)) {
+            if (athleteNames.includes(currentVal)) {
                 select.value = currentVal;
-            } else {
-                select.value = 'ALL';
             }
 
             const delBtn = document.getElementById('deleteAthleteBtn');
+            const targetAthleteInput = document.getElementById('inputTargetAthlete');
+            const submitBtn = document.getElementById('submitRecordBtn');
+            const labelEl = document.getElementById('targetAthleteLabel');
+
             if (select.value !== 'ALL') {
                 delBtn.classList.remove('hidden');
+                targetAthleteInput.value = select.value;
+                labelEl.textContent = `當前正為「${select.value}」新增檢測數據：`;
+                submitBtn.disabled = false;
+                submitBtn.className = "w-full mt-4 py-2.5 bg-sky-600 hover:bg-sky-500 rounded-lg font-medium transition text-white cursor-pointer";
+                submitBtn.textContent = `儲存「${select.value}」的紀錄並同步`;
             } else {
                 delBtn.classList.add('hidden');
+                targetAthleteInput.value = "全隊總覽 (請先在上方選擇選手)";
+                labelEl.textContent = "請先在上方下拉選單選擇特定選手以進行紀錄";
+                submitBtn.disabled = true;
+                submitBtn.className = "w-full mt-4 py-2.5 bg-slate-700 text-slate-400 rounded-lg font-medium transition cursor-not-allowed";
+                submitBtn.textContent = "請先在上方選擇隊員";
             }
         }
 
+        // 選手名冊管理 Modal 開關與處理
+        function openAthleteModal() {
+            const selected = document.getElementById('athleteSelect').value;
+            if (selected !== 'ALL' && window.athletes[selected]) {
+                const profile = window.athletes[selected];
+                document.getElementById('athleteModalName').value = selected;
+                document.getElementById('athleteModalGender').value = profile.gender || '男';
+                document.getElementById('athleteModalDOB').value = profile.dob || '';
+                document.getElementById('athleteModalHeight').value = profile.height || '';
+                document.getElementById('athleteModalWeight').value = profile.weight || '';
+            } else {
+                document.getElementById('athleteForm').reset();
+            }
+            document.getElementById('athleteModal').classList.remove('hidden');
+        }
+
+        function closeAthleteModal() {
+            document.getElementById('athleteModal').classList.add('hidden');
+        }
+
+        function handleAthleteSubmit(e) {
+            e.preventDefault();
+            const name = document.getElementById('athleteModalName').value.trim();
+            if (!name) return;
+
+            window.athletes[name] = {
+                gender: document.getElementById('athleteModalGender').value,
+                dob: document.getElementById('athleteModalDOB').value || null,
+                height: parseFloat(document.getElementById('athleteModalHeight').value) || null,
+                weight: parseFloat(document.getElementById('athleteModalWeight').value) || null
+            };
+
+            syncDataToCloud();
+            closeAthleteModal();
+            updateAthleteOptions();
+            document.getElementById('athleteSelect').value = name;
+            updateDashboard();
+        }
+
+        // 刪除選手及其資料
         function deleteCurrentAthlete() {
             const select = document.getElementById('athleteSelect');
             const targetName = select.value;
 
             if (targetName === 'ALL') return;
 
-            if (confirm(`確定要刪除隊員「${targetName}」及其所有的歷史數據嗎？`)) {
+            if (confirm(`確定要刪除選手「${targetName}」的名冊及其所有的歷史檢測數據嗎？`)) {
+                delete window.athletes[targetName];
                 window.records = window.records.filter(r => r.name !== targetName);
-                syncToCloud();
+                syncDataToCloud();
+                select.value = 'ALL';
                 updateAthleteOptions();
                 updateDashboard();
             }
         }
 
-        function autoFillAthleteProfile(name) {
-            const existing = window.records.find(r => r.name === name);
-            if (existing) {
-                if (existing.gender) document.getElementById('inputGender').value = existing.gender;
-                if (existing.height) document.getElementById('inputHeight').value = existing.height;
-                if (existing.weight) document.getElementById('inputWeight').value = existing.weight;
-                if (existing.dob) document.getElementById('inputDOB').value = existing.dob;
-            }
-        }
-
+        // 提交檢測數據紀錄
         function handleFormSubmit(e) {
             e.preventDefault();
+            const athleteName = document.getElementById('athleteSelect').value;
+            if (athleteName === 'ALL') return;
+
             const newRecord = {
                 id: Date.now(),
-                name: document.getElementById('inputName').value.trim(),
-                gender: document.getElementById('inputGender').value,
+                name: athleteName,
                 date: document.getElementById('inputDate').value,
-                height: parseFloat(document.getElementById('inputHeight').value) || null,
-                weight: parseFloat(document.getElementById('inputWeight').value) || null,
-                dob: document.getElementById('inputDOB').value || null,
                 sj: parseFloat(document.getElementById('inputSJ').value),
                 cmj: parseFloat(document.getElementById('inputCMJ').value),
                 aj: parseFloat(document.getElementById('inputAJ').value) || null,
@@ -468,9 +544,7 @@
             };
 
             window.records.push(newRecord);
-            syncToCloud();
-            updateAthleteOptions();
-            document.getElementById('athleteSelect').value = newRecord.name;
+            syncDataToCloud();
             updateDashboard();
 
             document.getElementById('inputSJ').value = '';
@@ -486,11 +560,7 @@
 
             document.getElementById('editId').value = target.id;
             document.getElementById('editName').value = target.name;
-            document.getElementById('editGender').value = target.gender || '男';
             document.getElementById('editDate').value = target.date;
-            document.getElementById('editHeight').value = target.height || '';
-            document.getElementById('editWeight').value = target.weight || '';
-            document.getElementById('editDOB').value = target.dob || '';
             document.getElementById('editSJ').value = target.sj;
             document.getElementById('editCMJ').value = target.cmj;
             document.getElementById('editAJ').value = target.aj || '';
@@ -512,12 +582,8 @@
             if (index !== -1) {
                 window.records[index] = {
                     id: id,
-                    name: document.getElementById('editName').value.trim(),
-                    gender: document.getElementById('editGender').value,
+                    name: document.getElementById('editName').value,
                     date: document.getElementById('editDate').value,
-                    height: parseFloat(document.getElementById('editHeight').value) || null,
-                    weight: parseFloat(document.getElementById('editWeight').value) || null,
-                    dob: document.getElementById('editDOB').value || null,
                     sj: parseFloat(document.getElementById('editSJ').value),
                     cmj: parseFloat(document.getElementById('editCMJ').value),
                     aj: parseFloat(document.getElementById('editAJ').value) || null,
@@ -526,17 +592,15 @@
                 };
 
                 closeEditModal();
-                syncToCloud();
-                updateAthleteOptions();
+                syncDataToCloud();
                 updateDashboard();
             }
         }
 
         function deleteRecord(id) {
-            if (confirm("確定要刪除這筆測試紀錄嗎？")) {
+            if (confirm("確定要刪除這筆檢測紀錄嗎？")) {
                 window.records = window.records.filter(r => r.id !== id);
-                syncToCloud();
-                updateAthleteOptions();
+                syncDataToCloud();
                 updateDashboard();
             }
         }
@@ -544,29 +608,26 @@
         function updateDashboard() {
             const selectedAthlete = document.getElementById('athleteSelect').value;
             
-            const delBtn = document.getElementById('deleteAthleteBtn');
-            if (selectedAthlete !== 'ALL') {
-                delBtn.classList.remove('hidden');
-            } else {
-                delBtn.classList.add('hidden');
-            }
-
             let filtered = selectedAthlete === 'ALL' ? window.records : window.records.filter(r => r.name === selectedAthlete);
             filtered.sort((a, b) => new Date(a.date) - new Date(b.date));
 
+            // 更新選取選手基本資料卡片
             const profileDiv = document.getElementById('athleteProfile');
-            if (selectedAthlete !== 'ALL' && filtered.length > 0) {
-                const latest = filtered[filtered.length - 1];
+            if (selectedAthlete !== 'ALL') {
+                const profile = window.athletes[selectedAthlete] || {};
                 profileDiv.classList.remove('hidden');
                 profileDiv.innerHTML = `
-                    <div>性別: <span class="text-white">${latest.gender || '--'}</span></div>
-                    <div>身高: <span class="text-white">${latest.height ? latest.height + ' cm' : '--'}</span></div>
-                    <div>體重: <span class="text-white">${latest.weight ? latest.weight + ' kg' : '--'}</span></div>
+                    <div class="font-bold text-sky-300 text-base">${selectedAthlete}</div>
+                    <div>性別: <span class="text-white">${profile.gender || '--'}</span></div>
+                    <div>身高: <span class="text-white">${profile.height ? profile.height + ' cm' : '--'}</span></div>
+                    <div>體重: <span class="text-white">${profile.weight ? profile.weight + ' kg' : '--'}</span></div>
+                    <button onclick="openAthleteModal()" class="text-xs text-sky-400 hover:text-sky-300 underline ml-2">編輯資料</button>
                 `;
             } else {
                 profileDiv.classList.add('hidden');
             }
 
+            // 更新 KPI 卡片
             if (filtered.length > 0) {
                 const latest = filtered[filtered.length - 1];
                 const eur = calculateEUR(latest.cmj, latest.sj);
@@ -594,6 +655,7 @@
                 document.getElementById('kpiArmDiag').textContent = '無資料';
             }
 
+            // 更新表格內容
             const tableBody = document.getElementById('dataTableBody');
             tableBody.innerHTML = '';
             [...filtered].reverse().forEach(r => {
@@ -752,7 +814,8 @@
         function exportCSV() {
             let csv = "姓名,性別,出生年月日,身高,體重,日期,SJ,CMJ,AJ,RSI,揮棒速度\n";
             window.records.forEach(r => {
-                csv += `${r.name},${r.gender||''},${r.dob||''},${r.height||''},${r.weight||''},${r.date},${r.sj},${r.cmj},${r.aj||''},${r.rsi||''},${r.batSpeed}\n`;
+                const profile = window.athletes[r.name] || {};
+                csv += `${r.name},${profile.gender||''},${profile.dob||''},${profile.height||''},${profile.weight||''},${r.date},${r.sj},${r.cmj},${r.aj||''},${r.rsi||''},${r.batSpeed}\n`;
             });
 
             const blob = new Blob(["\uFEFF" + csv], { type: 'text/csv;charset=utf-8;' });
@@ -775,13 +838,18 @@
                     if (!line) continue;
                     const cols = line.split(',');
                     if (cols.length >= 6) {
+                        const name = cols[0].trim();
+                        if (name && !window.athletes[name]) {
+                            window.athletes[name] = {
+                                gender: cols[1]?.trim() || "男",
+                                dob: cols[2]?.trim() || null,
+                                height: parseFloat(cols[3]) || null,
+                                weight: parseFloat(cols[4]) || null
+                            };
+                        }
                         window.records.push({
                             id: Date.now() + i,
-                            name: cols[0].trim(),
-                            gender: cols[1]?.trim() || "男",
-                            dob: cols[2]?.trim() || null,
-                            height: parseFloat(cols[3]) || null,
-                            weight: parseFloat(cols[4]) || null,
+                            name: name,
                             date: cols[5].trim(),
                             sj: parseFloat(cols[6]) || 0,
                             cmj: parseFloat(cols[7]) || 0,
@@ -793,7 +861,7 @@
                     }
                 }
                 alert(`成功匯入 ${count} 筆資料！`);
-                syncToCloud();
+                syncDataToCloud();
                 updateAthleteOptions();
                 updateDashboard();
             };
